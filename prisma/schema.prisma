@@ -1,0 +1,2336 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id            String    @id @default(cuid())
+  phone         String    @unique
+  email         String?
+  name          String
+  password      String?
+  language      String    @default("hi") // Hindi default
+  role          String    @default("citizen") // citizen, health_worker, admin, doctor
+  aadhaarHash   String?
+  address       String?
+  district      String?
+  state         String?
+  pincode       String?
+  latitude      Float?
+  longitude     Float?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  symptoms      SymptomReport[]
+  patients      Patient[]
+  alerts        Alert[]
+  vaccinations  VaccinationRecord[]
+  appointments  Appointment[]
+  emergencies   Emergency[]
+  feedback      Feedback[]
+}
+
+// Patient Records (for health workers to manage)
+model Patient {
+  id                String    @id @default(cuid())
+  userId            String?
+  user              User?     @relation(fields: [userId], references: [id])
+  
+  // Basic Info
+  name              String
+  age               Int
+  gender            String
+  phone             String
+  aadhaarHash       String?
+  
+  // Location
+  village           String?
+  district          String?
+  state             String?
+  pincode           String?
+  latitude          Float?
+  longitude         Float?
+  
+  // Health Info
+  bloodGroup        String?
+  allergies         String?
+  chronicConditions String?
+  isHighRisk        Boolean   @default(false)
+  pregnancyDueDate  DateTime?
+  
+  // Assigned Health Worker
+  healthWorkerId    String?
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  symptoms          SymptomReport[]
+  vaccinations      VaccinationRecord[]
+  appointments      Appointment[]
+  emergencies       Emergency[]
+  healthRecords     HealthRecord[]
+}
+
+// Health Facility Network
+model HealthFacility {
+  id                String    @id @default(cuid())
+  name              String
+  type              String    // PHC, CHC, District Hospital, Private Clinic
+  address           String
+  district          String
+  state             String
+  pincode           String
+  latitude          Float
+  longitude         Float
+  
+  // Contact
+  phone             String
+  emergencyPhone    String?
+  email             String?
+  
+  // Services
+  services          String    // JSON array of services
+  specialties       String?   // JSON array of specialties
+  bedCapacity       Int?
+  availableBeds     Int?
+  
+  // Status
+  isOpen            Boolean   @default(true)
+  crowdLevel        String    @default("low") // low, moderate, high
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  appointments      Appointment[]
+  medicineStock     MedicineStock[]
+}
+
+// Medicine & Supply Tracking
+model MedicineStock {
+  id              String    @id @default(cuid())
+  facilityId      String
+  facility        HealthFacility @relation(fields: [facilityId], references: [id])
+  
+  medicineName    String
+  genericName     String?
+  quantity        Int
+  unit            String
+  minStock        Int
+  expiryDate      DateTime?
+  
+  lastUpdated     DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+}
+
+// Symptom Reports & AI Triage
+model SymptomReport {
+  id              String    @id @default(cuid())
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id])
+  patientId       String?
+  patient         Patient?  @relation(fields: [patientId], references: [id])
+  
+  // Input
+  symptoms        String    // JSON array of symptoms
+  inputType       String    @default("text") // text, voice, image
+  imageUrl        String?
+  voiceUrl        String?
+  transcription   String?
+  
+  // Location at time of report
+  latitude        Float?
+  longitude       Float?
+  district        String?
+  
+  // AI Analysis
+  aiDiagnosis     String?   // JSON with diagnosis suggestions
+  severity        String    @default("low") // low, moderate, high, critical
+  recommendation  String?
+  homeRemedies    String?   // JSON array
+  nearbyFacilities String?  // JSON array of facility IDs
+  
+  // Outbreak Detection
+  isOutbreakSignal Boolean  @default(false)
+  outbreakType     String?
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Health Worker Alerts
+model Alert {
+  id              String    @id @default(cuid())
+  title           String
+  message         String
+  type            String    // outbreak, emergency, followup, vaccination, stock_alert
+  priority        String    @default("medium") // low, medium, high, critical
+  
+  // Targeting
+  targetType      String    // all, district, facility, health_worker, patient
+  targetId        String?
+  district        String?
+  
+  // Source
+  createdBy       String?
+  user            User?     @relation(fields: [createdBy], references: [id])
+  
+  // Status
+  status          String    @default("active") // active, acknowledged, resolved
+  acknowledgedAt  DateTime?
+  resolvedAt      DateTime?
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Vaccination Records
+model VaccinationRecord {
+  id              String    @id @default(cuid())
+  patientId       String
+  patient         Patient   @relation(fields: [patientId], references: [id])
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id])
+  
+  vaccineName     String
+  doseNumber      Int
+  totalDoses      Int
+  administeredDate DateTime
+  nextDueDate     DateTime?
+  facilityId      String?
+  batchNumber     String?
+  
+  // Reminders
+  reminderSent    Boolean   @default(false)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Appointments
+model Appointment {
+  id              String    @id @default(cuid())
+  patientId       String?
+  patient         Patient?  @relation(fields: [patientId], references: [id])
+  facilityId      String?
+  facility        HealthFacility? @relation(fields: [facilityId], references: [id])
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id])
+  doctorId        String?   // Link to Doctor
+  timeSlotId      String?   // Link to DoctorTimeSlot
+  
+  // Appointment Details
+  appointmentDate DateTime
+  appointmentTime String
+  endTime         String?   // End time of appointment
+  duration        Int       @default(15) // Duration in minutes
+  
+  // Type & Mode
+  type            String    // checkup, followup, vaccination, emergency, consultation
+  mode            String    @default("in_person") // in_person, video, audio
+  reason          String?   // Reason for visit
+  symptoms        String?   // JSON array of symptoms
+  
+  // Status
+  status          String    @default("scheduled") // scheduled, confirmed, in_progress, completed, cancelled, no_show
+  
+  // Payment
+  fee             Float?
+  paymentStatus   String    @default("pending") // pending, paid, refunded
+  paymentMethod   String?   // cash, upi, card, insurance
+  
+  // Confirmation & Reminders
+  confirmationCode String?  // Unique code for patient
+  reminderSent    Boolean   @default(false)
+  reminderSentAt  DateTime?
+  
+  // Cancellation
+  cancelledAt     DateTime?
+  cancelledBy     String?
+  cancellationReason String?
+  
+  // Consultation
+  consultationId  String?   // Link to Consultation if video/audio
+  
+  // Follow-up
+  followUpRequired Boolean  @default(false)
+  followUpDate    DateTime?
+  
+  // Notes
+  notes           String?   // Patient notes
+  doctorNotes     String?   // Doctor's notes (private)
+  
+  // Check-in
+  checkedInAt     DateTime?
+  checkInMethod   String?   // self, staff, qr_code
+  
+  // Rating
+  patientRating   Int?
+  patientReview   String?
+  ratedAt         DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Emergency Records
+model Emergency {
+  id              String    @id @default(cuid())
+  patientId       String?
+  patient         Patient?  @relation(fields: [patientId], references: [id])
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id])
+  
+  type            String    // medical, pregnancy, accident, disaster
+  description     String
+  severity        String    @default("high")
+  
+  // Location
+  latitude        Float?
+  longitude       Float?
+  address         String?
+  district        String?
+  
+  // Response
+  status          String    @default("active") // active, responded, resolved
+  responderId     String?
+  responseTime    DateTime?
+  resolvedAt      DateTime?
+  
+  // AI First Aid
+  aiFirstAidAdvice String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Health Records
+model HealthRecord {
+  id              String    @id @default(cuid())
+  patientId       String?
+  patient         Patient?  @relation(fields: [patientId], references: [id])
+  userId          String?   // User who owns this record
+  
+  // Type & Category
+  type            String    // prescription, lab_report, diagnosis, discharge_summary, imaging, vaccination, vital_signs, consultation_notes
+  category        String?   // general, cardiology, orthopedics, etc.
+  title           String
+  description     String?
+  
+  // File attachments
+  fileUrl         String?
+  fileName        String?
+  fileType        String?   // pdf, image, etc.
+  fileSize        Int?
+  
+  // Medical Details
+  doctorId        String?   // Link to Doctor
+  doctorName      String?
+  facilityId      String?
+  facilityName    String?
+  appointmentId   String?   // Link to Appointment
+  
+  // Diagnosis
+  diagnosis       String?   // Primary diagnosis
+  secondaryDiagnoses String? // JSON array of secondary diagnoses
+  icdCode         String?   // ICD-10 code
+  symptoms        String?   // JSON array of symptoms
+  
+  // Vital Signs
+  bloodPressureSystolic Int?
+  bloodPressureDiastolic Int?
+  heartRate       Int?
+  temperature     Float?
+  respiratoryRate Int?
+  oxygenSaturation Int?
+  weight          Float?
+  height          Float?
+  bmi             Float?
+  bloodGroup      String?
+  
+  // Prescription
+  prescription    String?   // JSON array of medicines
+  
+  // Lab Results
+  labResults      String?   // JSON array of lab test results
+  
+  // Follow-up
+  followUpRequired Boolean  @default(false)
+  followUpDate    DateTime?
+  followUpNotes   String?
+  
+  // Access Control
+  isPrivate       Boolean   @default(false)
+  sharedWith      String?   // JSON array of user IDs
+  
+  // Verification
+  isVerified      Boolean   @default(false)
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  
+  // Tags
+  tags            String?   // JSON array of tags
+  
+  recordDate      DateTime
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  labResultsList  LabResult[]
+}
+
+// Lab Results
+model LabResult {
+  id              String    @id @default(cuid())
+  healthRecordId  String?
+  healthRecord    HealthRecord? @relation(fields: [healthRecordId], references: [id], onDelete: Cascade)
+  patientId       String?
+  userId          String?
+  
+  // Test Info
+  testName        String
+  testCode        String?
+  testCategory    String?   // blood, urine, imaging, etc.
+  labName         String?
+  labId           String?
+  
+  // Results
+  resultValue     String
+  resultUnit      String?
+  referenceRange  String?
+  isAbnormal      Boolean   @default(false)
+  abnormalityLevel String?  // low, high, critical
+  
+  // Status
+  status          String    @default("pending") // pending, completed, reviewed
+  
+  // Doctor
+  orderedBy       String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  
+  // Notes
+  notes           String?
+  interpretation  String?
+  
+  // Date
+  testDate        DateTime
+  reportDate      DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Outbreak Predictions
+model OutbreakPrediction {
+  id              String    @id @default(cuid())
+  disease         String
+  district        String
+  state           String
+  
+  riskLevel       String    // low, moderate, high, critical
+  probability     Float
+  predictedDate   DateTime?
+  
+  // Contributing factors
+  symptomReports  Int       @default(0)
+  weatherData     String?   // JSON
+  historicalData  String?   // JSON
+  
+  // Status
+  status          String    @default("predicted") // predicted, confirmed, false_alarm
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Government Scheme Eligibility
+model SchemeEligibility {
+  id              String    @id @default(cuid())
+  userId          String?
+  
+  schemeName      String    // PMJAY, Ayushman Bharat, etc.
+  eligibilityStatus String  @default("pending") // pending, eligible, ineligible, enrolled
+  enrollmentId    String?
+  
+  documents       String?   // JSON array of required documents
+  verifiedAt      DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Feedback & Grievances
+model Feedback {
+  id              String    @id @default(cuid())
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id])
+  
+  type            String    // feedback, complaint, suggestion
+  category        String?
+  subject         String
+  description     String
+  facilityId      String?
+  
+  // Status
+  status          String    @default("pending") // pending, in_progress, resolved
+  resolution      String?
+  resolvedAt      DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Transport & Ambulance
+model TransportRequest {
+  id              String    @id @default(cuid())
+  patientId       String?
+  emergencyId     String?
+  
+  pickupLocation  String
+  pickupLat       Float?
+  pickupLng       Float?
+  dropLocation    String
+  dropLat         Float?
+  dropLng         Float?
+  
+  vehicleType     String    // ambulance, auto, volunteer
+  status          String    @default("requested") // requested, assigned, in_transit, completed
+  
+  driverId        String?
+  driverPhone     String?
+  estimatedTime   Int?      // minutes
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Health Worker Tasks
+model HealthWorkerTask {
+  id              String    @id @default(cuid())
+  healthWorkerId  String
+  patientId       String?
+  
+  taskType        String    // visit, followup, vaccination, emergency
+  description     String
+  priority        String    @default("medium")
+  
+  scheduledDate   DateTime
+  completedDate   DateTime?
+  status          String    @default("pending") // pending, in_progress, completed, cancelled
+  
+  notes           String?
+  
+  // GPS tracking
+  visitLat        Float?
+  visitLng        Float?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Chat History for AI Assistant
+model ChatHistory {
+  id              String    @id @default(cuid())
+  sessionId       String
+  userId          String?
+  
+  role            String    // user, assistant
+  content         String
+  inputType       String    @default("text") // text, voice, image
+  
+  createdAt       DateTime  @default(now())
+}
+
+// Government Schemes Master Data
+model GovernmentScheme {
+  id                  String    @id @default(cuid())
+  name                String    // PMJAY, Ayushman Bharat, etc.
+  description         String
+  shortDescription    String?
+  
+  // Eligibility criteria stored as JSON
+  eligibilityCriteria String    // JSON object with criteria
+  benefits            String    // JSON array of benefits
+  documents           String    // JSON array of required documents
+  
+  // Coverage
+  coverageAmount      String?   // e.g., "₹5 lakh per family"
+  coverageType        String?   // individual, family
+  
+  // Target groups
+  targetGroups        String?   // JSON array of target groups
+  
+  // Status
+  isActive            Boolean   @default(true)
+  
+  // Official info
+  officialWebsite     String?
+  helpline            String?
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  // Relations
+  applications        SchemeApplication[]
+}
+
+// Scheme Applications by Users
+model SchemeApplication {
+  id              String    @id @default(cuid())
+  userId          String
+  schemeId        String
+  scheme          GovernmentScheme @relation(fields: [schemeId], references: [id])
+  
+  // Application details
+  status          String    @default("draft") // draft, submitted, under_review, approved, rejected
+  applicationId   String?   // Official application ID
+  
+  // Documents uploaded
+  documents       String    // JSON array of uploaded documents
+  
+  // Review info
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  
+  // Enrollment
+  enrollmentId    String?
+  enrollmentDate  DateTime?
+  
+  // Timestamps
+  appliedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Health Camps and Events
+model HealthCamp {
+  id              String    @id @default(cuid())
+  title           String
+  description     String?
+  
+  // Organizer info
+  organizer       String    // Organization name
+  organizerType   String    // government, ngo, hospital, corporate
+  
+  // Date and time
+  date            DateTime
+  endDate         DateTime?
+  startTime       String
+  endTime         String
+  
+  // Location
+  venue           String
+  address         String
+  district        String
+  state           String
+  pincode         String?
+  latitude        Float?
+  longitude       Float?
+  
+  // Services offered
+  services        String    // JSON array of services
+  
+  // Capacity
+  capacity        Int?
+  registered      Int       @default(0)
+  
+  // Status
+  status          String    @default("upcoming") // upcoming, ongoing, completed, cancelled
+  
+  // Contact
+  contactPerson   String?
+  contactPhone    String?
+  
+  // Registration deadline
+  registrationDeadline DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Community Forum Posts
+model ForumPost {
+  id              String    @id @default(cuid())
+  userId          String
+  
+  // Content
+  title           String
+  content         String
+  category        String    // general, pregnancy, child_health, chronic_disease, mental_health, nutrition
+  
+  // Replies stored as JSON array
+  replies         String    @default("[]")  // JSON array of reply objects
+  
+  // Engagement
+  views           Int       @default(0)
+  likes           Int       @default(0)
+  
+  // Moderation
+  status          String    @default("active") // active, hidden, deleted
+  isPinned        Boolean   @default(false)
+  
+  // Tags
+  tags            String?   // JSON array of tags
+  
+  // Last activity
+  lastActivityAt  DateTime  @default(now())
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Health Challenges / Gamification
+model HealthChallenge {
+  id              String    @id @default(cuid())
+  title           String
+  description     String
+  
+  // Challenge type
+  type            String    // steps, water, sleep, exercise, nutrition, meditation
+  targetValue     Int       // e.g., 10000 steps, 8 glasses water
+  
+  // Duration
+  startDate       DateTime
+  endDate         DateTime
+  durationDays    Int
+  
+  // Rewards
+  points          Int       // Points for completion
+  badge           String?   // Badge name
+  
+  // Participants stored as JSON
+  participants    String    @default("[]")  // JSON array of {userId, progress, completed}
+  
+  // Stats
+  totalParticipants Int     @default(0)
+  completions     Int       @default(0)
+  
+  // Status
+  status          String    @default("upcoming") // upcoming, active, completed
+  
+  // Difficulty
+  difficulty      String    @default("medium") // easy, medium, hard
+  
+  // Creator
+  createdBy       String?   // Admin or system generated
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Volunteer Network
+model Volunteer {
+  id              String    @id @default(cuid())
+  userId          String
+  
+  // Profile
+  name            String
+  phone           String
+  email           String?
+  
+  // Skills stored as JSON array
+  skills          String    // JSON array: first_aid, counseling, transport, translation, etc.
+  
+  // Availability
+  availability    String    // JSON object with days and times
+  isAvailable     Boolean   @default(true)
+  
+  // Location
+  district        String?
+  state           String?
+  latitude        Float?
+  longitude       Float?
+  
+  // Verification
+  verified        Boolean   @default(false)
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  
+  // Experience
+  experience      String?   // Years of experience or description
+  certifications  String?   // JSON array of certifications
+  
+  // Stats
+  hoursContributed Float   @default(0)
+  tasksCompleted  Int       @default(0)
+  rating          Float?
+  
+  // Emergency contact
+  emergencyContact String?
+  emergencyPhone  String?
+  
+  // Status
+  status          String    @default("active") // active, inactive, suspended
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// ==================== TELEMEDICINE ====================
+
+// Doctor Profile
+model Doctor {
+  id                String    @id @default(cuid())
+  userId            String?   // Link to User if registered
+  
+  // Personal Info
+  name              String
+  phone             String
+  email             String?
+  photo             String?
+  dateOfBirth       DateTime?
+  gender            String?
+  
+  // Professional Info
+  specialization    String    // General Medicine, Cardiology, Pediatrics, etc.
+  qualifications    String    // JSON array of degrees
+  registrationNumber String?
+  registrationCouncil String?  // Medical council name
+  yearsOfExperience Int?
+  
+  // Practice Info
+  facilityId        String?   // Primary facility
+  facilityName      String?   // Facility name for display
+  consultationFee   Float     @default(0)
+  videoConsultFee   Float?
+  followUpFee       Float?    // Fee for follow-up consultations
+  
+  languages         String    @default("[]") // JSON array of languages spoken
+  bio               String?   // Short bio/description
+  
+  // Availability - stored as JSON
+  availability      String    @default("{}") // JSON object with weekly schedule
+  slotDuration      Int       @default(15) // Default slot duration in minutes
+  bufferTime        Int       @default(5) // Buffer time between appointments
+  
+  // Online Consultation
+  isAvailableOnline Boolean   @default(false)
+  isAvailableInPerson Boolean @default(true)
+  maxDailyAppointments Int?   // Max appointments per day
+  
+  // Rating & Reviews
+  rating            Float     @default(0)
+  totalReviews      Int       @default(0)
+  
+  // Verification
+  isVerified        Boolean   @default(false)
+  verifiedAt        DateTime?
+  documents         String?   // JSON array of document URLs
+  
+  // Stats
+  totalConsultations Int      @default(0)
+  totalPatients     Int       @default(0)
+  thisMonthConsultations Int  @default(0)
+  
+  // Status
+  status            String    @default("active") // active, inactive, suspended, on_leave
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  consultations     Consultation[]
+  prescriptions     Prescription[]
+  schedules         DoctorSchedule[]
+  leaves            DoctorLeave[]
+  timeSlots         DoctorTimeSlot[]
+}
+
+// Doctor's Weekly Schedule
+model DoctorSchedule {
+  id                String    @id @default(cuid())
+  doctorId          String
+  doctor            Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  // Day of week
+  dayOfWeek         Int       // 0=Sunday, 1=Monday, ..., 6=Saturday
+  
+  // Time slots for this day
+  startTime         String    // "09:00"
+  endTime           String    // "17:00"
+  breakStart        String?   // Lunch break start "13:00"
+  breakEnd          String?   // Lunch break end "14:00"
+  
+  // Consultation type available
+  isOnline          Boolean   @default(true)
+  isInPerson        Boolean   @default(true)
+  
+  // Max appointments for this day
+  maxAppointments   Int?
+  
+  // Status
+  isActive          Boolean   @default(true)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@unique([doctorId, dayOfWeek])
+}
+
+// Doctor Leave/Time Off
+model DoctorLeave {
+  id                String    @id @default(cuid())
+  doctorId          String
+  doctor            Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  // Leave details
+  startDate         DateTime
+  endDate           DateTime
+  leaveType         String    // full_day, half_day_morning, half_day_evening
+  reason            String?
+  
+  // Approval (for hospital managed doctors)
+  status            String    @default("approved") // pending, approved, rejected
+  approvedBy        String?
+  approvedAt        DateTime?
+  
+  // Recurring
+  isRecurring       Boolean   @default(false)
+  recurringPattern  String?   // weekly, monthly, yearly
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Doctor Time Slots (Generated from schedule)
+model DoctorTimeSlot {
+  id                String    @id @default(cuid())
+  doctorId          String
+  doctor            Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  // Slot details
+  date              DateTime
+  startTime         String    // "09:00"
+  endTime           String    // "09:15"
+  
+  // Slot type
+  consultationType  String    // video, in_person, both
+  
+  // Status
+  status            String    @default("available") // available, booked, blocked, completed
+  bookedBy          String?   // Patient/Consultation ID
+  bookedAt          DateTime?
+  
+  // Notes
+  notes             String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@unique([doctorId, date, startTime])
+}
+
+// Video/Audio Consultations
+model Consultation {
+  id                String    @id @default(cuid())
+  
+  // Participants
+  patientId         String?
+  doctorId          String
+  doctor            Doctor    @relation(fields: [doctorId], references: [id])
+  userId            String?   // User who booked
+  
+  // Scheduling
+  scheduledDate     DateTime
+  scheduledTime     String    // HH:MM format
+  duration          Int       @default(15) // minutes
+  
+  // Type
+  type              String    @default("video") // video, audio, chat
+  reason            String?   // Patient's reason for consultation
+  
+  // Payment
+  fee               Float
+  paymentStatus     String    @default("pending") // pending, paid, refunded
+  
+  // Video Call
+  videoLink         String?   // Generated video call link
+  roomCode          String?   // Room ID for video call
+  
+  // Status
+  status            String    @default("scheduled") // scheduled, in_progress, completed, cancelled
+  startedAt         DateTime?
+  endedAt           DateTime?
+  cancelledAt       DateTime?
+  cancellationReason String?
+  
+  // Notes
+  doctorNotes       String?   // Doctor's notes during consultation
+  patientNotes      String?   // Patient's notes after consultation
+  
+  // Follow-up
+  followUpRequired  Boolean   @default(false)
+  followUpDate      DateTime?
+  
+  // Rating
+  patientRating     Int?      // 1-5 stars
+  patientReview     String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  prescription      Prescription?
+}
+
+// E-Prescriptions
+model Prescription {
+  id                String    @id @default(cuid())
+  consultationId    String?   @unique
+  consultation      Consultation? @relation(fields: [consultationId], references: [id])
+  
+  doctorId          String
+  doctor            Doctor    @relation(fields: [doctorId], references: [id])
+  patientId         String?
+  userId            String?
+  
+  // Prescription Details
+  medicines         String    // JSON array of {name, dosage, frequency, duration, instructions}
+  diagnosis         String?
+  notes             String?   // Additional notes from doctor
+  
+  // Advice
+  dietaryAdvice     String?
+  lifestyleAdvice   String?
+  
+  // Follow-up
+  followUpDate      DateTime?
+  followUpNotes     String?
+  
+  // Validity
+  validUntil        DateTime?
+  
+  // Status
+  status            String    @default("active") // active, expired, cancelled
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// ==================== DIGITAL HEALTH CARD ====================
+
+model HealthCard {
+  id                String    @id @default(cuid())
+  userId            String?   @unique
+  patientId         String?   @unique
+  
+  // Card Details
+  cardNumber        String    @unique // Unique health card ID
+  cardType          String    @default("standard") // standard, priority, disability
+  
+  // QR Code
+  qrData            String?   // QR code data (JSON)
+  qrImageUrl        String?   // QR code image URL
+  
+  // Health Summary
+  bloodGroup        String?
+  allergies         String?   // JSON array
+  chronicConditions String?   // JSON array
+  emergencyContact  String?   // JSON object {name, phone, relation}
+  
+  // Validity
+  issuedAt          DateTime  @default(now())
+  validUntil        DateTime?
+  
+  // Status
+  status            String    @default("active") // active, expired, suspended
+  
+  // Access Log
+  lastAccessedAt    DateTime?
+  accessCount       Int       @default(0)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// ==================== E-PHARMACY ====================
+
+// Medicine Catalog
+model Medicine {
+  id                String    @id @default(cuid())
+  
+  // Basic Info
+  name              String
+  genericName       String?
+  brand             String?
+  category          String    // tablet, syrup, injection, etc.
+  
+  // Details
+  composition       String?
+  strength          String?   // e.g., "500mg"
+  form              String?   // tablet, capsule, syrup
+  
+  // Pricing
+  mrp               Float
+  discountPercent   Float     @default(0)
+  
+  // Availability
+  inStock           Boolean   @default(true)
+  stockQuantity     Int       @default(0)
+  
+  // Requirements
+  requiresPrescription Boolean @default(false)
+  
+  // Images
+  imageUrl          String?
+  
+  // Description
+  description       String?
+  uses              String?   // JSON array of uses
+  sideEffects       String?   // JSON array of side effects
+  
+  // Status
+  isActive          Boolean   @default(true)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Pharmacy Partner
+model Pharmacy {
+  id                String    @id @default(cuid())
+  
+  // Basic Info
+  name              String
+  phone             String
+  email             String?
+  
+  // Location
+  address           String
+  district          String
+  state             String
+  pincode           String
+  latitude          Float?
+  longitude         Float?
+  
+  // Delivery
+  deliveryRadius    Int       @default(5) // km
+  minOrderAmount    Float     @default(0)
+  deliveryCharges   Float     @default(0)
+  freeDeliveryAbove Float?
+  
+  // Timing
+  openTime          String    @default("09:00")
+  closeTime         String    @default("21:00")
+  isOpen24Hours     Boolean   @default(false)
+  
+  // Status
+  isOpen            Boolean   @default(true)
+  isVerified        Boolean   @default(false)
+  
+  // Stats
+  rating            Float     @default(0)
+  totalOrders       Int       @default(0)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Medicine Orders
+model MedicineOrder {
+  id                String    @id @default(cuid())
+  orderNumber       String    @unique
+  
+  userId            String?
+  
+  // Items
+  items             String    // JSON array of {medicineId, name, quantity, price}
+  
+  // Pricing
+  subtotal          Float
+  deliveryCharges   Float     @default(0)
+  discount          Float     @default(0)
+  totalAmount       Float
+  
+  // Prescription
+  prescriptionId    String?   // If requires prescription
+  prescriptionImage String?   // Uploaded prescription
+  
+  // Delivery Address
+  deliveryAddress   String
+  deliveryPincode   String
+  deliveryLat       Float?
+  deliveryLng       Float?
+  recipientName     String
+  recipientPhone    String
+  
+  // Pharmacy
+  pharmacyId        String?
+  
+  // Payment
+  paymentMethod     String    @default("cod") // cod, upi, card
+  paymentStatus     String    @default("pending") // pending, paid, failed
+  
+  // Status
+  status            String    @default("placed") // placed, confirmed, processing, dispatched, delivered, cancelled
+  
+  // Tracking
+  estimatedDelivery DateTime?
+  deliveredAt       DateTime?
+  
+  // Pharmacy Notes
+  pharmacyNotes     String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Medicine Reminders
+model MedicineReminder {
+  id                String    @id @default(cuid())
+  userId            String?
+  
+  // Medicine Info
+  medicineName      String
+  dosage            String?
+  instructions      String?
+  
+  // Schedule
+  frequency         String    // once, twice, thrice, custom
+  times             String    // JSON array of times ["08:00", "20:00"]
+  startDate         DateTime
+  endDate           DateTime?
+  
+  // Days
+  days              String    @default("[]") // JSON array of days [0,1,2,3,4,5,6]
+  
+  // Reminders
+  reminderMinutes   Int       @default(0) // Minutes before
+  reminderType      String    @default("notification") // notification, sms, both
+  
+  // Status
+  isActive          Boolean   @default(true)
+  
+  // Stats
+  dosesTaken        Int       @default(0)
+  dosesMissed       Int       @default(0)
+  lastTakenAt       DateTime?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// ==================== ADMIN & SYSTEM ====================
+
+// Audit Logs
+model AuditLog {
+  id                String    @id @default(cuid())
+  
+  // Who
+  userId            String?
+  userName          String?
+  userRole          String?
+  
+  // What
+  action            String    // create, update, delete, login, logout, etc.
+  entityType        String    // User, Patient, Facility, etc.
+  entityId          String?
+  
+  // Details
+  details           String?   // JSON with full details
+  oldValue          String?   // JSON with old values (for updates)
+  newValue          String?   // JSON with new values (for updates)
+  
+  // Where
+  ipAddress         String?
+  userAgent         String?
+  
+  // Result
+  status            String    @default("success") // success, failure
+  errorMessage      String?
+  
+  createdAt         DateTime  @default(now())
+}
+
+// System Settings
+model SystemSetting {
+  id                String    @id @default(cuid())
+  key               String    @unique
+  value             String
+  description       String?
+  category          String?   // general, notification, payment, etc.
+  
+  // Type for parsing
+  valueType         String    @default("string") // string, number, boolean, json
+  
+  // Metadata
+  isPublic          Boolean   @default(false) // Exposed to frontend
+  isEditable        Boolean   @default(true)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Notifications
+model Notification {
+  id                String    @id @default(cuid())
+  userId            String?
+  
+  // Content
+  title             String
+  message           String
+  type              String    // info, warning, success, error
+  category          String?   // system, reminder, alert, etc.
+  
+  // Action
+  actionType        String?   // link, modal, none
+  actionUrl         String?
+  actionData        String?   // JSON
+  
+  // Status
+  isRead            Boolean   @default(false)
+  readAt            DateTime?
+  
+  // Delivery
+  deliveryMethod    String    @default("in_app") // in_app, sms, email, push
+  deliveryStatus    String    @default("pending") // pending, sent, delivered, failed
+  deliveredAt       DateTime?
+  
+  // Priority
+  priority          String    @default("normal") // low, normal, high, urgent
+  
+  // Expiry
+  expiresAt         DateTime?
+  
+  createdAt         DateTime  @default(now())
+}
+
+// Health Insights
+model HealthInsight {
+  id                String    @id @default(cuid())
+  userId            String?
+  patientId         String?
+  
+  // Insight Type
+  type              String    // risk_assessment, trend, recommendation, alert
+  
+  // Content
+  title             String
+  description       String
+  details           String?   // JSON with detailed data
+  
+  // Risk/Score
+  riskLevel         String?   // low, moderate, high, critical
+  riskScore         Float?
+  
+  // Category
+  category          String?   // cardiovascular, diabetes, general, etc.
+  
+  // Validity
+  validFrom         DateTime  @default(now())
+  validUntil        DateTime?
+  
+  // AI Generated
+  isAIGenerated     Boolean   @default(true)
+  confidence        Float?    // Confidence score (0-1)
+  
+  // Status
+  isAcknowledged    Boolean   @default(false)
+  acknowledgedAt    DateTime?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Referral Tracking for Monetization
+model ReferralTracking {
+  id                String    @id @default(cuid())
+  referrerId        String?   // User who made the referral
+  type              String    // hospital, transport, appointment, medicine
+  targetId          String?   // ID of hospital/transport/appointment
+  targetName        String?   // Name for display
+  
+  // Patient Info
+  patientName       String?
+  patientPhone      String?
+  serviceType       String?
+  
+  // Commission
+  commissionRate    Float     @default(0)  // Percentage
+  commissionEarned  Float     @default(0)  // Amount in INR
+  
+  // Status
+  status            String    @default("pending") // pending, completed, rejected, cancelled
+  
+  // Metadata
+  metadata          String?   // JSON for additional data
+  
+  // Timestamps
+  completedAt       DateTime?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Hospital Partnership
+model HospitalPartnership {
+  id                String    @id @default(cuid())
+  facilityId        String    // Link to HealthFacility
+  
+  // Partnership Details
+  partnershipType   String    @default("standard") // standard, premium, enterprise
+  commissionRate    Float     @default(5)  // Base commission percentage
+  
+  // Agreement
+  agreementStart    DateTime
+  agreementEnd      DateTime?
+  contractFile      String?   // URL to contract document
+  
+  // Contact
+  primaryContact    String?
+  contactPhone      String?
+  contactEmail      String?
+  
+  // Status
+  status            String    @default("active") // active, suspended, terminated
+  
+  // Stats
+  totalReferrals    Int       @default(0)
+  totalRevenue      Float     @default(0)
+  pendingPayout     Float     @default(0)
+  
+  // Payment Details
+  bankName          String?
+  accountNumber     String?
+  ifscCode          String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// User Earnings Wallet
+model UserWallet {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  
+  // Balance
+  availableBalance  Float     @default(0)
+  pendingBalance    Float     @default(0)
+  totalEarned       Float     @default(0)
+  totalWithdrawn    Float     @default(0)
+  
+  // Bank Details for Withdrawal
+  bankName          String?
+  accountNumber     String?
+  ifscCode          String?
+  accountHolderName String?
+  
+  // Status
+  isVerified        Boolean   @default(false)
+  isKycComplete     Boolean   @default(false)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Withdrawal Requests
+model WithdrawalRequest {
+  id                String    @id @default(cuid())
+  userId            String
+  walletId          String?
+  
+  // Amount
+  amount            Float
+  processingFee     Float     @default(0)
+  netAmount         Float
+  
+  // Status
+  status            String    @default("pending") // pending, processing, completed, rejected
+  
+  // Payment
+  transactionId     String?   // Bank transaction reference
+  paymentMethod     String?   // bank_transfer, upi
+  
+  // Notes
+  rejectionReason   String?
+  adminNotes        String?
+  
+  processedAt       DateTime?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Hospital Leads (OPD, IPD, Surgery)
+model HospitalLead {
+  id                String    @id @default(cuid())
+  hospitalId        String    // Partner hospital
+  hospitalName      String
+  
+  // Lead Source
+  referrerId        String?   // User who generated lead
+  referrerName      String?
+  
+  // Patient Info
+  patientName       String
+  patientPhone      String
+  patientAge        Int?
+  patientGender     String?
+  
+  // Lead Type
+  leadType          String    // opd_consultation, ipd_admission, surgery, diagnostic, emergency
+  department        String?   // Cardiology, Orthopedics, etc.
+  
+  // Lead Value
+  estimatedValue    Float     @default(0)  // Expected bill amount
+  actualValue       Float?    // Actual bill amount
+  
+  // Commission
+  commissionRate    Float     @default(0)
+  commissionEarned  Float     @default(0)
+  platformFee       Float     @default(0)  // Platform's share
+  
+  // Status
+  status            String    @default("new") // new, contacted, converted, completed, cancelled
+  
+  // Conversion
+  convertedAt       DateTime?
+  completedAt       DateTime?
+  
+  // Notes
+  notes             String?
+  
+  // Metadata
+  metadata          String?   // JSON for additional data
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Home Visit Doctor
+model HomeVisitDoctor {
+  id                String    @id @default(cuid())
+  doctorId          String?   // Link to Doctor
+  name              String
+  phone             String
+  email             String?
+  specialization    String
+  qualifications    String?
+  
+  // Service Details
+  visitRadius       Int       @default(10)  // km
+  consultationFee   Float     @default(500)
+  emergencyFee      Float?
+  availableDays     String    @default("[]")  // JSON array
+  availableTimes    String    @default("[]")  // JSON array
+  
+  // Location
+  city              String?
+  district          String?
+  state             String?
+  latitude          Float?
+  longitude         Float?
+  
+  // Stats
+  totalVisits       Int       @default(0)
+  rating            Float     @default(0)
+  totalReviews      Int       @default(0)
+  
+  // Subscription
+  subscriptionPlan  String    @default("basic")  // basic, pro, premium
+  subscriptionExpiry DateTime?
+  
+  // Status
+  isVerified        Boolean   @default(false)
+  isAvailable       Boolean   @default(true)
+  status            String    @default("active")
+  
+  // Commission
+  platformCommission Float    @default(20)  // 20%
+  
+  // Relations
+  bookings          HomeVisitBooking[]
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Home Visit Booking
+model HomeVisitBooking {
+  id                String    @id @default(cuid())
+  doctorId          String
+  doctor            HomeVisitDoctor @relation(fields: [doctorId], references: [id])
+  userId            String?
+  
+  // Patient Info
+  patientName       String
+  patientPhone      String
+  patientAge        Int?
+  patientAddress    String
+  patientLatitude   Float?
+  patientLongitude  Float?
+  
+  // Visit Details
+  visitType         String    @default("general")  // general, emergency, followup
+  scheduledDate     DateTime
+  scheduledTime     String
+  symptoms          String?
+  notes             String?
+  
+  // Payment
+  consultationFee   Float
+  platformFee       Float     @default(0)
+  totalAmount       Float
+  paymentStatus     String    @default("pending")  // pending, paid, refunded
+  paymentMethod     String?
+  
+  // Commission
+  doctorEarning     Float     @default(0)
+  platformEarning   Float     @default(0)
+  
+  // Status
+  status            String    @default("scheduled")  // scheduled, in_progress, completed, cancelled
+  
+  // Completion
+  startedAt         DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  cancellationReason String?
+  
+  // Review
+  patientRating     Int?
+  patientReview     String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Medical Helper/Assistant
+model MedicalHelper {
+  id                String    @id @default(cuid())
+  userId            String?
+  
+  // Personal Info
+  name              String
+  phone             String
+  email             String?
+  photo             String?
+  
+  // Professional Info
+  helperType        String    // nurse, physiotherapist, lab_technician, caregiver, attendant
+  qualifications    String?
+  certifications    String?   // JSON array
+  experience        Int?      // Years
+  
+  // Services
+  services          String    // JSON array of services offered
+  hourlyRate        Float     @default(300)
+  dailyRate         Float?
+  
+  // Location
+  city              String?
+  district          String?
+  state             String?
+  serviceRadius     Int       @default(15)  // km
+  latitude          Float?
+  longitude         Float?
+  
+  // Availability
+  availableDays     String    @default("[]")  // JSON array
+  availableTimes    String    @default("[]")  // JSON array
+  isAvailable       Boolean   @default(true)
+  
+  // Stats
+  totalServices     Int       @default(0)
+  rating            Float     @default(0)
+  totalReviews      Int       @default(0)
+  
+  // Subscription
+  subscriptionPlan  String    @default("starter")  // starter, professional, expert
+  subscriptionExpiry DateTime?
+  
+  // Verification
+  isVerified        Boolean   @default(false)
+  verifiedAt        DateTime?
+  idProof           String?   // ID proof document URL
+  
+  // Commission
+  platformCommission Float    @default(20)  // 20%
+  
+  // Status
+  status            String    @default("active")
+  
+  // Relations
+  bookings          MedicalHelperBooking[]
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Medical Helper Booking
+model MedicalHelperBooking {
+  id                String    @id @default(cuid())
+  helperId          String
+  helper            MedicalHelper @relation(fields: [helperId], references: [id])
+  userId            String?
+  
+  // Patient Info
+  patientName       String
+  patientPhone      String
+  patientAddress    String
+  patientLatitude   Float?
+  patientLongitude  Float?
+  
+  // Service Details
+  serviceType       String
+  description       String?
+  scheduledDate     DateTime
+  scheduledTime     String
+  duration          Int?      // hours or days
+  
+  // Payment
+  hourlyRate        Float?
+  totalAmount       Float
+  platformFee       Float     @default(0)
+  paymentStatus     String    @default("pending")
+  paymentMethod     String?
+  
+  // Commission
+  helperEarning     Float     @default(0)
+  platformEarning   Float     @default(0)
+  
+  // Status
+  status            String    @default("scheduled")
+  
+  // Completion
+  startedAt         DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  cancellationReason String?
+  
+  // Review
+  patientRating     Int?
+  patientReview     String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Diagnostic Lab Partner
+model DiagnosticLab {
+  id                String    @id @default(cuid())
+  name              String
+  phone             String
+  email             String?
+  
+  // Location
+  address           String
+  city              String
+  district          String
+  state             String
+  pincode           String?
+  latitude          Float?
+  longitude         Float?
+  
+  // Services
+  tests             String    // JSON array of tests offered
+  homeCollection    Boolean   @default(true)
+  homeCollectionCharge Float  @default(50)
+  
+  // Pricing
+  minimumOrder      Float     @default(0)
+  
+  // Stats
+  totalBookings     Int       @default(0)
+  rating            Float     @default(0)
+  totalReviews      Int       @default(0)
+  
+  // Subscription
+  subscriptionPlan  String    @default("bronze")  // bronze, silver, gold
+  subscriptionExpiry DateTime?
+  
+  // Verification
+  isVerified        Boolean   @default(false)
+  nablAccredited    Boolean   @default(false)
+  
+  // Commission
+  platformCommission Float    @default(15)  // 15%
+  
+  // Status
+  isOpen            Boolean   @default(true)
+  status            String    @default("active")
+  
+  // Relations
+  bookings          DiagnosticBooking[]
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Diagnostic Booking
+model DiagnosticBooking {
+  id                String    @id @default(cuid())
+  labId             String
+  lab               DiagnosticLab @relation(fields: [labId], references: [id])
+  userId            String?
+  
+  // Patient Info
+  patientName       String
+  patientPhone      String
+  patientAge        Int?
+  patientGender     String?
+  patientAddress    String?
+  
+  // Booking Details
+  tests             String    // JSON array of tests
+  homeCollection    Boolean   @default(false)
+  scheduledDate     DateTime
+  scheduledTime     String?
+  
+  // Payment
+  testAmount        Float
+  homeCollectionCharge Float  @default(0)
+  discount          Float     @default(0)
+  totalAmount       Float
+  paymentStatus     String    @default("pending")
+  
+  // Commission
+  labEarning        Float     @default(0)
+  platformEarning   Float     @default(0)
+  
+  // Reports
+  reportUrl         String?
+  reportReadyAt     DateTime?
+  
+  // Status
+  status            String    @default("scheduled")  // scheduled, sample_collected, processing, completed, cancelled
+  
+  // Review
+  patientRating     Int?
+  patientReview     String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// ==================== ENQUIRY & CONTACT SYSTEM ====================
+
+// Enquiries from public/users
+model Enquiry {
+  id                String    @id @default(cuid())
+  
+  // Contact Info
+  name              String
+  email             String?
+  phone             String
+  userId            String?   // If logged in user
+  
+  // Enquiry Details
+  subject           String
+  message           String
+  category          String    // general, support, feedback, partnership, complaint, other
+  
+  // Priority & Status
+  priority          String    @default("normal") // low, normal, high, urgent
+  status            String    @default("pending") // pending, in_progress, resolved, closed
+  
+  // Source
+  source            String    @default("website") // website, app, phone, email
+  
+  // Assignment
+  assignedTo        String?   // Staff user ID
+  assignedAt        DateTime?
+  
+  // Resolution
+  resolvedAt        DateTime?
+  resolution        String?
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  followUps         EnquiryFollowUp[]
+}
+
+// Follow-ups by staff
+model EnquiryFollowUp {
+  id                String    @id @default(cuid())
+  enquiryId         String
+  enquiry           Enquiry   @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  
+  // Staff Info
+  staffId           String    // User ID of staff
+  staffName         String
+  
+  // Follow-up Details
+  notes             String
+  actionTaken       String?   // called, emailed, visited, resolved
+  
+  // Contact Result
+  contactStatus     String    @default("attempted") // attempted, connected, no_response, callback_requested
+  
+  // Next Action
+  nextAction        String?
+  nextActionDate    DateTime?
+  
+  createdAt         DateTime  @default(now())
+}
+
+// ==================== CRM & PATIENT ASSIGNMENTS ====================
+
+// Patient Assignment to Doctor/Staff
+model PatientAssignment {
+  id                String    @id @default(cuid())
+  
+  // Patient Info
+  patientId         String
+  patientName       String
+  patientPhone      String
+  patientAge        Int?
+  patientGender     String?
+  
+  // User link if registered
+  userId            String?   // Link to User if patient is registered
+  
+  // Assignment Details
+  assignedToId      String    // Doctor or Staff User ID
+  assignedToName    String
+  assignedToRole    String    // doctor, health_worker, admin
+  
+  // Assignment Type
+  assignmentType    String    // primary_care, follow_up, consultation, emergency, routine_checkup
+  priority          String    @default("normal") // low, normal, high, urgent
+  
+  // Medical Context
+  reason            String?   // Reason for assignment
+  symptoms          String?   // JSON array of symptoms
+  diagnosis         String?   // Preliminary diagnosis
+  notes             String?   // Additional notes
+  
+  // Status
+  status            String    @default("assigned") // assigned, in_progress, completed, transferred, cancelled
+  
+  // Scheduling
+  scheduledDate     DateTime?
+  completedDate     DateTime?
+  
+  // Follow-up
+  followUpRequired  Boolean   @default(false)
+  followUpDate      DateTime?
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  activities        StaffActivity[]
+}
+
+// Staff Activity Log for CRM
+model StaffActivity {
+  id                String    @id @default(cuid())
+  
+  // Links
+  assignmentId      String?
+  assignment        PatientAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  enquiryId         String?
+  
+  // Staff Info
+  staffId           String
+  staffName         String
+  staffRole         String
+  
+  // Activity Details
+  activityType      String    // call, visit, consultation, follow_up, note, status_change, assignment
+  description       String
+  
+  // Contact Info
+  contactMethod     String?   // phone, video, in_person, message
+  contactDuration   Int?      // Duration in minutes
+  
+  // Result
+  outcome           String?   // successful, no_response, rescheduled, referred
+  nextAction        String?
+  nextActionDate    DateTime?
+  
+  // Notes
+  notes             String?
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+}
+
+// CRM Dashboard Stats (cached)
+model CRMStats {
+  id                String    @id @default(cuid())
+  
+  // Date
+  date              DateTime  @default(now())
+  
+  // Enquiries
+  newEnquiries      Int       @default(0)
+  resolvedEnquiries Int       @default(0)
+  pendingEnquiries  Int       @default(0)
+  
+  // Assignments
+  newAssignments    Int       @default(0)
+  completedAssignments Int    @default(0)
+  pendingAssignments Int      @default(0)
+  
+  // Activities
+  totalCalls        Int       @default(0)
+  totalVisits       Int       @default(0)
+  totalConsultations Int      @default(0)
+  
+  // Staff Performance
+  staffId           String?
+  staffName         String?
+  activitiesCount   Int       @default(0)
+  resolutionRate    Float     @default(0)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// ==================== EXTENDED EARNING MODELS ====================
+
+// Health Insurance Referral
+model HealthInsuranceReferral {
+  id                String    @id @default(cuid())
+  
+  // Insurance Provider
+  providerId        String
+  providerName      String
+  planName          String
+  planType          String    // individual, family, senior_citizen, corporate
+  
+  // Referrer
+  referrerId        String?
+  referrerName      String?
+  
+  // Customer Info
+  customerName      String
+  customerPhone     String
+  customerEmail     String?
+  customerAge       Int?
+  
+  // Policy Details
+  coverageAmount    Float
+  premiumAmount     Float
+  policyTerm        Int       // in years
+  
+  // Commission
+  commissionRate    Float     @default(15)
+  commissionEarned  Float     @default(0)
+  platformFee       Float     @default(0)
+  
+  // Status
+  status            String    @default("new")
+  
+  // Dates
+  appliedAt         DateTime?
+  approvedAt        DateTime?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Health Checkup Package
+model HealthCheckupPackage {
+  id                String    @id @default(cuid())
+  
+  name              String
+  description       String?
+  tests             String    // JSON array
+  labId             String?
+  labName           String?
+  
+  mrp               Float
+  discountedPrice   Float
+  platformCommission Float    @default(15)
+  
+  category          String    // basic, comprehensive, executive, premium
+  targetGroup       String?
+  
+  isActive          Boolean   @default(true)
+  isFeatured        Boolean   @default(false)
+  
+  totalBookings     Int       @default(0)
+  rating            Float     @default(0)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Health Checkup Booking
+model HealthCheckupBooking {
+  id                String    @id @default(cuid())
+  
+  packageId         String
+  packageName       String
+  
+  userId            String?
+  referrerId        String?
+  customerName      String
+  customerPhone     String
+  
+  scheduledDate     DateTime
+  scheduledTime     String?
+  homeCollection    Boolean   @default(false)
+  address           String?
+  
+  amount            Float
+  referrerCommission Float    @default(0)
+  platformFee       Float     @default(0)
+  
+  status            String    @default("booked")
+  paymentStatus     String    @default("pending")
+  
+  reportUrl         String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Medical Equipment Rental
+model MedicalEquipment {
+  id                String    @id @default(cuid())
+  
+  name              String
+  category          String    // mobility, respiratory, monitoring, therapy
+  description       String?
+  
+  dailyRate         Float
+  weeklyRate        Float?
+  monthlyRate       Float?
+  depositAmount     Float     @default(0)
+  
+  totalUnits        Int       @default(1)
+  availableUnits    Int       @default(1)
+  
+  platformCommission Float    @default(20)
+  
+  providerId        String?
+  providerName      String?
+  
+  isActive          Boolean   @default(true)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Equipment Rental Booking
+model EquipmentRentalBooking {
+  id                String    @id @default(cuid())
+  
+  equipmentId       String
+  equipmentName     String
+  
+  userId            String?
+  referrerId        String?
+  customerName      String
+  customerPhone     String
+  deliveryAddress   String
+  
+  startDate         DateTime
+  endDate           DateTime
+  rentalDays        Int
+  
+  dailyRate         Float
+  subtotal          Float
+  depositAmount     Float
+  totalAmount       Float
+  
+  referrerCommission Float    @default(0)
+  platformFee       Float     @default(0)
+  
+  status            String    @default("booked")
+  paymentStatus     String    @default("pending")
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Hospital Directory Entry
+model HospitalDirectory {
+  id                String    @id @default(cuid())
+  
+  name              String
+  type              String    // private, government, trust
+  category          String    // multi_specialty, super_specialty, general
+  
+  phone             String
+  email             String?
+  website           String?
+  
+  address           String
+  area              String?
+  city              String
+  district          String
+  state             String
+  pincode           String
+  latitude          Float?
+  longitude         Float?
+  
+  departments       String    // JSON array
+  specialties       String    // JSON array
+  facilities        String    // JSON array
+  
+  bedCapacity       Int?
+  icuBeds           Int?
+  
+  accreditations    String?   // JSON array
+  
+  partnershipStatus String    @default("none")
+  partnershipTier   String?
+  
+  opdCommission     Float     @default(10)
+  ipdCommission     Float     @default(8)
+  surgeryCommission Float     @default(5)
+  
+  totalLeads        Int       @default(0)
+  totalEarnings     Float     @default(0)
+  rating            Float     @default(0)
+  
+  isOpen24Hours     Boolean   @default(false)
+  hasEmergency      Boolean   @default(true)
+  hasICU            Boolean   @default(false)
+  
+  isActive          Boolean   @default(true)
+  isVerified        Boolean   @default(false)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Lead Tracking
+model LeadTracking {
+  id                String    @id @default(cuid())
+  
+  leadType          String    // hospital, insurance, checkup, equipment
+  leadSource        String    // directory, referral, search
+  
+  directoryId       String?
+  bookingId         String?
+  
+  customerName      String
+  customerPhone     String
+  
+  referrerId        String?
+  referrerName      String?
+  
+  estimatedValue    Float?
+  actualValue       Float?
+  
+  commissionRate    Float     @default(0)
+  commissionEarned  Float     @default(0)
+  platformFee       Float     @default(0)
+  
+  status            String    @default("new")
+  
+  nextFollowUp      DateTime?
+  notes             String?
+  
+  convertedAt       DateTime?
+  completedAt       DateTime?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Lab Test Requirement - Users submit requirements, labs respond
+model LabTestRequirement {
+  id                String    @id @default(cuid())
+  
+  // User who submitted the requirement
+  userId            String?
+  referrerId        String?   // Health worker who referred
+  referrerName      String?
+  
+  // Patient Info
+  patientName       String
+  patientPhone      String
+  patientAge        Int?
+  patientGender     String?
+  patientAddress    String?
+  
+  // Location
+  district          String?
+  state             String?
+  pincode           String?
+  latitude          Float?
+  longitude         Float?
+  
+  // Test Requirements
+  testCategory      String    // blood, urine, imaging, pathology, cardiac, etc.
+  tests             String    // JSON array of test names required
+  urgency           String    @default("normal") // urgent, normal, routine
+  preferredDate     DateTime?
+  homeCollection    Boolean   @default(false)
+  
+  // Additional Info
+  prescriptionUrl   String?   // Doctor's prescription if any
+  symptoms          String?   // JSON array of symptoms
+  notes             String?
+  budget            String?   // User's budget range
+  
+  // Lab Responses - Labs that have shown interest
+  labResponses      String    @default("[]") // JSON array of {labId, labName, quotedPrice, message, respondedAt}
+  
+  // Selected Lab
+  selectedLabId     String?
+  selectedLabName   String?
+  quotedPrice       Float?
+  
+  // Status
+  status            String    @default("open") // open, responding, confirmed, completed, cancelled
+  
+  // Earnings
+  commissionRate    Float     @default(10)
+  commissionEarned  Float     @default(0)
+  platformFee       Float     @default(0)
+  
+  // Timestamps
+  expiresAt         DateTime? // Requirement expiry
+  confirmedAt       DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// Lab Test Catalog
+model LabTestCatalog {
+  id                String    @id @default(cuid())
+  
+  testName          String
+  testCode          String?
+  category          String    // blood, urine, imaging, pathology, cardiac
+  subCategory       String?
+  
+  description       String?
+  preparation       String?   // Fasting, etc.
+  sampleType        String?   // Blood, urine, etc.
+  
+  minPrice          Float     // Minimum market price
+  maxPrice          Float     // Maximum market price
+  avgPrice          Float     // Average price
+  homeCollectionAvailable Boolean @default(true)
+  
+  reportsIn         String?   // e.g., "24-48 hours"
+  
+  isActive          Boolean   @default(true)
+  isPopular         Boolean   @default(false)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}

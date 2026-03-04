@@ -10614,8 +10614,8 @@ export default function HealthPlatform() {
       {/* Footer */}
       <footer className="border-t py-4 bg-white/50 dark:bg-gray-900/50">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>Swasthya Mitra - AI Health Platform for India</p>
-          <p className="text-xs mt-1">Made with ❤️ for better healthcare access</p>
+          <p>Ai Heath - AI Health Platform for India</p>
+          <p className="text-xs mt-1">Made with ❤️ for better healthcare access | Akash Badole</p>
         </div>
       </footer>
     </div>

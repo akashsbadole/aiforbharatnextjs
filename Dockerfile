@@ -1,22 +1,22 @@
 # Multi-stage Dockerfile for Swasthya Mitra Next.js Application
-# Uses Bun as the package manager and standalone output mode
+# Uses Node.js as the runtime and standalone output mode
 
 # -----------------------------------------------------------------------------
 # Stage 1: Dependencies
 # -----------------------------------------------------------------------------
-FROM oven/bun:1.2-slim AS deps
+FROM node:22-slim AS deps
 WORKDIR /app
 
 # Copy package files
-COPY package.json bun.lock* ./
+COPY package.json package-lock.json* ./
 
-# Install dependencies
-RUN bun install --frozen-lockfile
+# Install dependencies (use npm ci if lockfile exists, otherwise npm install)
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 # -----------------------------------------------------------------------------
 # Stage 2: Builder
 # -----------------------------------------------------------------------------
-FROM oven/bun:1.2-slim AS builder
+FROM node:22-slim AS builder
 WORKDIR /app
 
 # Copy dependencies from deps stage
@@ -30,15 +30,15 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
 # Generate Prisma client
-RUN bun run db:generate
+RUN npm run db:generate
 
 # Build the Next.js application
-RUN bun run build
+RUN npm run build
 
 # -----------------------------------------------------------------------------
 # Stage 3: Production Runner
 # -----------------------------------------------------------------------------
-FROM oven/bun:1.2-slim AS runner
+FROM node:22-slim AS runner
 WORKDIR /app
 
 # Set environment variables
@@ -65,5 +65,5 @@ EXPOSE 3000
 # Set the environment variable for the port
 ENV PORT=3000
 
-# Start the Next.js server using Bun
-CMD ["bun", "server.js"]
+# Start the Next.js server using Node.js
+CMD ["node", "server.js"]
